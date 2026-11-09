@@ -128,9 +128,3 @@ carries on later.
   the logs, alerts and cost estimates.
 - **Simulated:** payments (the **Pay** button), bank confirmations, store sales, time passing (**Let a day pass**) and
   outages (**Test tools** on the dashboard). The chat stands in for WhatsApp or SMS.
-
-## For engineers
-
-How it is built (the states, the checks on every AI step, every event that wakes the agent, logs and metrics, tests,
-and what I would change at scale) is in [docs/technical-details.md](docs/technical-details.md). Recorded real AI runs
-are in [docs/live-run-example.md](docs/live-run-example.md).
