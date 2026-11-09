@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repayment-agent"
+version = "0.1.0"
+description = "A collections agent that works an overdue repayment case until the balance is 0."
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4", "google-genai>=3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["repayment"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

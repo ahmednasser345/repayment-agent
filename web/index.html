@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repayment Assistant</title>
+<meta name="description" content="Demo: an AI agent works overdue repayment cases until they are paid, under code-enforced limits.">
+<link rel="icon" href="data:,">
+<script>
+  // ?theme=dark or ?theme=light forces a theme (used for screenshots); otherwise the OS setting wins.
+  (function () {
+    var theme = new URLSearchParams(location.search).get('theme');
+    if (theme === 'dark' || theme === 'light') document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #e2e5ea;
+  --text: #15181e;
+  --muted: #5b6370;
+  --accent: #2d5bd3;
+  --accent-strong: #2149b0;
+  --accent-soft: #e9effd;
+  --accent-text: #2347a8;
+  --on-accent: #ffffff;
+  --ok: #1d7347;
+  --ok-soft: #e2f3e9;
+  --ok-line: #2f9a62;
+  --warn: #85560a;
+  --warn-soft: #fcf0d6;
+  --warn-line: #d99a1e;
+  --bad: #b3261e;
+  --bad-soft: #fce8e6;
+  --neutral: #5b6370;
+  --neutral-soft: #edeff2;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+  --shadow-lg: 0 10px 30px rgba(16, 24, 40, .16);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1015;
+    --surface: #171a21;
+    --surface-2: #1f232c;
+    --border: #2b303b;
+    --text: #e7e9ee;
+    --muted: #a2aab8;
+    --accent: #7ea2ff;
+    --accent-strong: #a3bdff;
+    --accent-soft: #1c2847;
+    --accent-text: #a9c0ff;
+    --on-accent: #0b1020;
+    --ok: #63d49c;
+    --ok-soft: #13301f;
+    --ok-line: #3fbf80;
+    --warn: #f1c35a;
+    --warn-soft: #33270c;
+    --warn-line: #e0a93a;
+    --bad: #ff8f86;
+    --bad-soft: #3b1714;
+    --neutral: #a2aab8;
+    --neutral-soft: #252a34;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1015;
+  --surface: #171a21;
+  --surface-2: #1f232c;
+  --border: #2b303b;
+  --text: #e7e9ee;
+  --muted: #a2aab8;
+  --accent: #7ea2ff;
+  --accent-strong: #a3bdff;
+  --accent-soft: #1c2847;
+  --accent-text: #a9c0ff;
+  --on-accent: #0b1020;
+  --ok: #63d49c;
+  --ok-soft: #13301f;
+  --ok-line: #3fbf80;
+  --warn: #f1c35a;
+  --warn-soft: #33270c;
+  --warn-line: #e0a93a;
+  --bad: #ff8f86;
+  --bad-soft: #3b1714;
+  --neutral: #a2aab8;
+  --neutral-soft: #252a34;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, .5);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", "Noto Sans Arabic", sans-serif;
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+p { margin: 0; }
+a { color: var(--accent-text); }
+button, input, textarea { font: inherit; color: inherit; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+[hidden] { display: none !important; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* ---------- top bar ---------- */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+@media (min-width: 861px) { .topbar { position: sticky; top: 0; z-index: 20; } }
+.topbar-inner {
+  max-width: 1240px; margin: 0 auto; padding: 10px 16px;
+  display: grid; align-items: center; gap: 10px 18px;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "brand tabs status reset";
+}
+.brand { grid-area: brand; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+.brand-mark {
+  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: none;
+  background: var(--accent); color: var(--on-accent); font-size: 15px;
+}
+.tabs { grid-area: tabs; display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
+.tab {
+  padding: 7px 14px; border-radius: 9px; text-decoration: none; color: var(--muted);
+  font-weight: 600; white-space: nowrap; text-align: center;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.status { grid-area: status; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; }
+.reset { grid-area: reset; justify-self: end; }
+.clock { display: flex; flex-direction: column; line-height: 1.2; font-size: 13px; }
+.clock span { color: var(--muted); font-size: 11.5px; }
+.clock b { font-weight: 600; white-space: nowrap; }
+@media (max-width: 860px) {
+  .topbar-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand reset" "tabs tabs" "status status";
+  }
+  .tab { flex: 1; }
+  .status { justify-content: space-between; }
+}
+.banner { background: var(--bad-soft); color: var(--bad); text-align: center; padding: 8px 16px; font-weight: 600; font-size: 14px; }
+
+/* ---------- shared bits ---------- */
+main { max-width: 1240px; margin: 0 auto; padding: 22px 16px 96px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.pill, .chip {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; white-space: nowrap;
+  font-weight: 600; line-height: 1.3;
+}
+.pill { padding: 4px 11px; font-size: 13px; }
+.chip { padding: 2px 10px; font-size: 12.5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.tone-ok { background: var(--ok-soft); color: var(--ok); }
+.tone-warn { background: var(--warn-soft); color: var(--warn); }
+.tone-bad { background: var(--bad-soft); color: var(--bad); }
+.tone-neutral { background: var(--neutral-soft); color: var(--neutral); }
+.tone-accent { background: var(--accent-soft); color: var(--accent-text); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px;
+  padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn.big { min-height: 52px; padding: 12px 30px; font-size: 17px; border-radius: 12px; }
+.btn.small { min-height: 34px; padding: 5px 12px; font-size: 13.5px; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn.is-busy { opacity: .85; }
+.btn.is-busy::before, .spinner {
+  content: ""; width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite;
+}
+.spinner { display: inline-block; width: 11px; height: 11px; }
+.linkbtn { background: none; border: 0; padding: 4px 2px; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 13px; }
+.linkbtn:hover { color: var(--text); }
+.progress { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.progress > span { display: block; height: 100%; border-radius: inherit; background: var(--ok-line); transition: width .4s ease; }
+.note { font-size: 12.5px; color: var(--muted); }
+textarea, input[type="number"] {
+  width: 100%; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  color: var(--text); padding: 9px 12px; font-size: 16px;
+}
+textarea:focus, input:focus { border-color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); font-weight: 600; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1.5s !important; transition: none !important; }
+}
+
+/* ---------- merchant home ---------- */
+.hero h1 { font-size: 26px; letter-spacing: -.01em; }
+.hero p { color: var(--muted); margin-top: 6px; max-width: 680px; }
+.how { list-style: none; padding: 0; margin: 20px 0 26px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.how li {
+  display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+}
+.step-n {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 700;
+}
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.mcard {
+  display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: inherit;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; box-shadow: var(--shadow); transition: border-color .15s, transform .15s;
+}
+.mcard:hover { border-color: var(--accent); transform: translateY(-1px); }
+.mcard-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.mcard h2 { font-size: 17px; }
+.who { color: var(--muted); font-size: 13.5px; }
+.amount { font-size: 14px; color: var(--muted); }
+.amount b { color: var(--text); font-size: 18px; font-weight: 700; }
+.hint { background: var(--surface-2); border-radius: 10px; padding: 9px 11px; font-size: 13.5px; color: var(--muted); }
+.go { margin-top: auto; color: var(--accent-text); font-weight: 600; font-size: 14px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 26px; }
+.facts .card { box-shadow: none; padding: 14px 16px; font-size: 14px; color: var(--muted); }
+.facts b { color: var(--text); }
+@media (max-width: 720px) {
+  .how, .facts { grid-template-columns: minmax(0, 1fr); }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- merchant app (one case) ---------- */
+.phone { max-width: 540px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.back { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; align-self: flex-start; }
+.back:hover { color: var(--text); }
+.app-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.app-head h1 { font-size: 19px; }
+.app-head h1 span { color: var(--muted); font-weight: 600; }
+.owe-label { font-size: 13px; color: var(--muted); font-weight: 600; }
+.big { font-size: 32px; font-weight: 750; letter-spacing: -.02em; line-height: 1.15; margin: 2px 0; }
+.big.paid { color: var(--ok); }
+.balance .progress { margin: 14px 0 6px; }
+.pay-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+.payform {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.payform .field { flex: 1 1 160px; }
+.payform .note { width: 100%; }
+.card-title { font-size: 15px; margin-bottom: 10px; }
+.inst { width: 100%; border-collapse: collapse; font-size: 14px; }
+.inst th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px 8px 4px 0; }
+.inst td { padding: 7px 8px 7px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.inst tr.is-paid td { color: var(--muted); }
+.inst .tick { color: var(--ok); font-weight: 700; }
+.start { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 20px; border-style: dashed; }
+.start p { max-width: 380px; }
+.chat {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px 14px; max-height: 60vh; overflow-y: auto;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.msg { max-width: 86%; padding: 10px 14px; border-radius: 16px; overflow-wrap: anywhere; }
+.msg .text { white-space: pre-wrap; }
+.msg .when { display: block; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 6px; }
+.msg.me { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 6px; }
+.msg.me .when { color: inherit; opacity: .8; text-align: end; }
+.msg.me.pending { opacity: .7; }
+.msg.sys {
+  align-self: center; max-width: 94%; text-align: center; font-size: 13.5px; color: var(--muted);
+  background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 8px 12px;
+}
+.msg.sys.receipt { color: var(--ok); border-style: solid; border-color: var(--ok-soft); background: var(--ok-soft); }
+.msg.sys.receipt .when { color: inherit; opacity: .8; }
+.msg .inst { margin-top: 10px; }
+.offer-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.offer-status { margin-top: 10px; }
+.flag { align-self: flex-end; font-size: 12px; color: var(--warn); margin-top: -4px; text-align: end; max-width: 86%; }
+.typing {
+  align-self: flex-start; display: inline-flex; gap: 5px; align-items: center; padding: 13px 15px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; border-bottom-left-radius: 6px;
+}
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite both; }
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+.status-line { text-align: center; color: var(--muted); font-size: 14px; font-weight: 600; }
+.composer { display: flex; flex-direction: column; gap: 10px; }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; }
+.suggest-label { width: 100%; font-size: 12.5px; color: var(--muted); }
+.sugg {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px;
+  padding: 7px 13px; font-size: 13.5px; cursor: pointer; text-align: start; max-width: 100%;
+}
+.sugg:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); }
+.sugg:disabled { opacity: .5; cursor: not-allowed; }
+.send-row { display: flex; gap: 8px; align-items: flex-end; }
+.send-row textarea { flex: 1; min-height: 46px; max-height: 150px; resize: none; border-radius: 12px; line-height: 1.4; }
+.send-row .btn { min-height: 46px; }
+.see-ai { align-self: center; font-weight: 600; text-decoration: none; padding: 6px; }
+.see-ai:hover { text-decoration: underline; }
+
+/* ---------- AI dashboard ---------- */
+.dash-intro { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin-bottom: 14px; }
+.dash-intro h1 { font-size: 22px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.panel-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 12px; }
+.panel-h h2 { font-size: 16px; }
+.panel-h .note { flex-basis: 100%; }
+.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--surface); }
+.tile .k { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.tile .v { font-size: 22px; font-weight: 750; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 13px; color: var(--muted); font-weight: 600; }
+.tile .s { font-size: 12px; color: var(--muted); }
+@media (max-width: 1100px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile .v { font-size: 19px; } }
+.alerts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.alert { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); }
+.alert .dot { margin-top: 6px; }
+.alert .grow { flex: 1; min-width: 0; }
+.lvl-bad .dot { color: var(--bad); }
+.lvl-warn .dot { color: var(--warn-line); }
+.lvl-info .dot { color: var(--neutral); }
+.dash-grid { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+.case-list { padding: 10px; }
+.case-list h2 { font-size: 13px; color: var(--muted); padding: 4px 8px 8px; }
+.citem {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center;
+  padding: 10px; border-radius: 10px; text-decoration: none; color: inherit; border: 1px solid transparent;
+}
+.citem:hover { background: var(--surface-2); }
+.citem[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.citem .nm { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citem .sub {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 4px 8px; font-size: 13px; color: var(--muted);
+}
+.needs { color: var(--warn); font-weight: 700; white-space: nowrap; font-size: 13px; }
+.needs::before { content: "●"; margin-right: 4px; color: var(--warn-line); }
+@media (min-width: 901px) { .case-list { position: sticky; top: 76px; } }
+@media (max-width: 900px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+  .case-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .citem { grid-template-columns: minmax(0, 1fr); }
+}
+.detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; scroll-margin-top: 16px; }
+.d-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.d-title h2 { font-size: 21px; }
+.kv { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 10px 16px; margin: 14px 0; }
+.kv dt { color: var(--muted); font-size: 13px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kv dd { margin: 0; }
+@media (max-width: 600px) { .kv { grid-template-columns: minmax(0, 1fr); gap: 2px; } .kv dd { margin-bottom: 8px; } }
+.callout { border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 12px; }
+.callout.warn { background: var(--warn-soft); color: var(--text); }
+.callout ul { margin: 6px 0 0; padding-left: 18px; }
+.callout q { font-style: italic; }
+.callout .note { display: block; }
+.done-text { font-weight: 600; margin-bottom: 10px; }
+.done-text.is-done { color: var(--ok); }
+.progress.lg { height: 10px; }
+.attention { border-color: var(--warn-line); box-shadow: 0 0 0 3px var(--warn-soft); }
+.attention.is-bad { border-color: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.human-part + .human-part { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.human-part > * + * { margin-top: 10px; }
+.why { color: var(--muted); font-size: 14px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gauges { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px 18px; }
+.g-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; margin-bottom: 6px; }
+.g-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.bar > span.fill-warn { background: var(--warn-line); }
+.bar > span.fill-bad { background: var(--bad); }
+.g-max { color: var(--bad); }
+.g-near { color: var(--warn); }
+.run { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.run + .run { margin-top: 12px; }
+.run-head { background: var(--surface-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+.run-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.run-title b { font-size: 15px; }
+.run-title time { color: var(--muted); font-size: 13px; }
+.stop { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; }
+.stop .dot { margin-top: 6px; }
+.stop.tone-text-ok .dot { color: var(--ok-line); }
+.stop.tone-text-warn .dot { color: var(--warn-line); }
+.stop.tone-text-bad .dot { color: var(--bad); }
+.stop.tone-text-accent .dot { color: var(--accent); }
+.stop.tone-text-neutral .dot { color: var(--neutral); }
+.mchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mchip {
+  font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.steps { list-style: none; margin: 0; padding: 0 14px; }
+.step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.step:first-child { border-top: 0; }
+.num {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px;
+  font-weight: 700; color: var(--muted); background: var(--surface-2);
+}
+.step-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.tool { font-weight: 650; }
+.reason { font-style: italic; margin-top: 4px; overflow-wrap: anywhere; }
+.summary { color: var(--muted); font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
+.meta { font-size: 12px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+details > summary { cursor: pointer; }
+.args { margin-top: 4px; }
+.args > summary { font-size: 12.5px; color: var(--accent-text); font-weight: 600; width: max-content; }
+pre {
+  margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); color: var(--text);
+  font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.empty { color: var(--muted); font-size: 14px; }
+.evt { width: 100%; border-collapse: collapse; font-size: 14px; }
+.evt th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); }
+.evt td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+.evt td.time { white-space: nowrap; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ev-id { display: block; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.evt tr.dup td { background: var(--surface-2); }
+@media (max-width: 640px) {
+  .evt thead { display: none; }
+  .evt, .evt tbody, .evt tr, .evt td { display: block; width: 100%; }
+  .evt tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .evt td { border: 0; padding: 2px 0; }
+}
+.hist { list-style: none; margin: 0; padding: 0; }
+.hist li { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 4px 12px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.hist li:first-child { border-top: 0; }
+.hist .time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.hist .move { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hist .by { font-size: 12.5px; color: var(--muted); }
+.hist .by b { color: var(--text); }
+@media (max-width: 600px) { .hist li { grid-template-columns: minmax(0, 1fr); } }
+.logs { max-height: 420px; overflow-y: auto; }
+.tools > summary { list-style: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tools > summary::-webkit-details-marker { display: none; }
+.tools > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+.tools[open] > summary::before { transform: rotate(90deg); }
+.tools > summary h2 { font-size: 16px; }
+.tool-rows { display: grid; gap: 10px; margin-top: 14px; }
+.tool-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+}
+.tool-row > div { flex: 1 1 260px; min-width: 0; }
+.tool-row p { font-size: 13.5px; color: var(--muted); }
+.on { color: var(--warn); font-weight: 700; }
+.foot { margin-top: 28px; font-size: 13px; color: var(--muted); text-align: center; }
+
+/* ---------- toasts ---------- */
+.toasts {
+  position: fixed; z-index: 50; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px;
+  width: min(440px, calc(100vw - 32px));
+}
+.toast {
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: 12px; box-shadow: var(--shadow-lg); padding: 12px 40px 12px 14px; font-size: 14px; position: relative;
+}
+.toast.error { border-left-color: var(--bad); }
+.toast.good { border-left-color: var(--ok-line); }
+.toast h3 { font-size: 14px; margin-bottom: 2px; }
+.toast ul { margin: 4px 0 0; padding-left: 18px; }
+.toast li + li { margin-top: 4px; }
+.toast .x {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 18px; cursor: pointer;
+}
+.toast .x:hover { background: var(--surface-2); }
+.lvl-ok .dot { color: var(--ok-line); }
+.human-part h3 { font-size: 15px; }
+.quote {
+  margin: 0; padding: 8px 12px; border-inline-start: 3px solid var(--border); border-radius: 8px;
+  background: var(--surface-2); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.run > .empty { padding: 12px 14px; }
+.phone > div:empty { display: none; }
+@media (min-width: 861px) { .detail, .panel { scroll-margin-top: 84px; } }  /* clear the sticky top bar */
+@media (max-width: 600px) {  /* phones: one toast at a time, at the top, so the composer stays visible */
+  .toasts { top: 12px; bottom: auto; }
+  .toast:not(:last-child) { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">₤</span>Repayment Assistant</div>
+    <nav class="tabs" aria-label="Views">
+      <a class="tab" id="tabMerchant" href="#merchant">📱 Merchant app</a>
+      <a class="tab" id="tabAi" href="#ai">🤖 AI dashboard</a>
+    </nav>
+    <div class="status">
+      <span class="pill ai-pill tone-neutral" id="aiPill"><span class="dot"></span>AI: connecting…</span>
+      <div class="clock"><span>Demo clock</span><b id="clockValue">…</b></div>
+      <button class="btn small" id="dayBtn" type="button">⏩ Let a day pass</button>
+    </div>
+    <button class="linkbtn reset" id="resetBtn" type="button">Reset demo</button>
+  </div>
+</header>
+<div class="banner" id="offline" role="alert" hidden></div>
+
+<main>
+  <!-- Merchant app: home -->
+  <section id="vHome" hidden>
+    <div class="hero">
+      <h1>Merchant app</h1>
+      <p>You play a merchant whose repayment is late. The AI assistant contacts you and keeps working the case
+        until it is paid or a person takes over.</p>
+    </div>
+    <ol class="how">
+      <li><span class="step-n">1</span><span>Pick a merchant</span></li>
+      <li><span class="step-n">2</span><span>Press <b>Start</b> — the AI sends the first message</span></li>
+      <li><span class="step-n">3</span><span>Reply like a real merchant, then watch the AI dashboard</span></li>
+    </ol>
+    <div class="cards" id="homeCards"></div>
+  </section>
+
+  <!-- Merchant app: one merchant's phone -->
+  <section id="vCase" class="phone" hidden>
+    <a class="back" href="#merchant">← All merchants</a>
+    <div class="app-head"><h1 id="cTitle"></h1><span id="cChip"></span></div>
+    <div id="cMissing" class="card" hidden></div>
+    <div id="cBody">
+      <div class="card balance">
+        <div id="cBalance"></div>
+        <div class="pay-row" id="payRow">
+          <span class="note">Simulates a bank transfer.</span>
+          <button class="btn primary" id="payToggle" type="button" aria-expanded="false" aria-controls="payForm">Pay</button>
+        </div>
+        <form class="payform" id="payForm" hidden>
+          <label class="field">Amount (EGP)
+            <input id="payAmount" type="number" min="1" step="1" inputmode="numeric" required>
+          </label>
+          <button class="btn primary" id="paySubmit" type="submit">Send payment</button>
+          <button class="btn" id="payCancel" type="button">Cancel</button>
+          <p class="note">Simulates a bank transfer. Code applies it — the AI can't change balances.</p>
+        </form>
+      </div>
+    </div>
+    <div id="cPlan"></div>
+    <div id="cStart"></div>
+    <div class="chat" id="chat" role="log" aria-live="off" aria-label="Conversation"></div>
+    <p class="status-line" id="cStatus" aria-live="polite"></p>
+    <form class="composer" id="composer">
+      <div class="suggest" id="chips"></div>
+      <div class="send-row">
+        <label class="sr-only" for="msg">Your message</label>
+        <textarea id="msg" dir="auto" rows="1" maxlength="2000" placeholder="Write a reply as the merchant…"></textarea>
+        <button class="btn primary" id="sendBtn" type="submit">Send</button>
+      </div>
+      <p class="note">Enter sends · Shift+Enter adds a new line · English or Arabic</p>
+    </form>
+    <a class="see-ai" id="seeAi" href="#ai">See what the AI did →</a>
+  </section>
+
+  <!-- AI dashboard -->
+  <section id="vAi" hidden>
+    <div class="dash-intro">
+      <h1>AI dashboard</h1>
+    </div>
+    <div class="panel" id="dOverview"></div>
+    <div class="dash-grid">
+      <nav class="panel case-list" aria-label="Cases"><h2>Cases</h2><div class="case-items" id="dCases"></div></nav>
+      <div class="detail" id="dDetail">
+        <div class="panel" id="dHead"></div>
+        <div class="panel" id="dDone"></div>
+        <div class="panel attention" id="dHuman" hidden></div>
+        <div class="panel" id="dLimits"></div>
+        <div class="panel" id="dRuns"></div>
+        <div class="panel" id="dEvents"></div>
+        <div class="panel" id="dHistory"></div>
+        <div class="panel" id="dLogs"></div>
+        <details class="panel tools" id="dTools">
+          <summary><h2>Test tools</h2><span class="note">Simulate duplicates, outages and bank confirmations</span></summary>
+          <div id="dToolsBody"></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot"><b>Real:</b> the AI (Gemini) reading messages and choosing tools, all control code, logs, metrics,
+    token counts and cost estimates. <b>Simulated:</b> payments (the Pay button), bank confirmations, store sales,
+    time passing and outages. The chat stands in for WhatsApp/SMS.</p>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script>
+(() => {
+'use strict';
+
+// ---------- helpers ----------
+const $ = (sel) => document.querySelector(sel);
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g,
+  (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const num = (n) => Number(n || 0).toLocaleString('en-US');
+const egp = (n) => `${num(n)} EGP`;
+const plural = (n, word) => `${num(n)} ${word}${Number(n) === 1 ? '' : 's'}`;
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pad = (n) => String(n).padStart(2, '0');
+
+// Server times are UTC (the demo clock), so dates are shown in UTC too.
+function fmtDay(ymd) {
+  const d = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z');
+  return isNaN(d) ? String(ymd ?? '') : `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  if (!iso || isNaN(d)) return '';
+  return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+function usd(v) {
+  const n = Number(v || 0);
+  return n === 0 ? '$0' : '$' + n.toFixed(n >= 0.1 ? 2 : 4);
+}
+const pct = (v) => Math.round(Number(v || 0) * 100) + '%';
+const secs = (msValue) => (Number(msValue || 0) >= 1000 ? (msValue / 1000).toFixed(1) + ' s' : Math.round(msValue || 0) + ' ms');
+
+// Fallback copies of the server's labels (repayment/labels.py), used only where a payload carries a code without its label
+// (transitions carry raw states; POST outcomes carry the event type without its label).
+const STATE_LABELS = {
+  NEW: 'Not started', WORKING: 'AI is working', WAITING: 'Waiting for the merchant',
+  NEEDS_APPROVAL: "Needs a manager's approval", ON_PLAN: 'On a payment plan', RESOLVED: 'Paid — closed',
+  ESCALATED: 'With a person',
+};
+const TYPE_LABELS = {
+  CASE_OPENED: 'Installment overdue — case opened', MERCHANT_REPLY: 'The merchant replied',
+  PAYMENT_RECEIVED: 'A payment arrived', PLAN_ACCEPTED: 'The merchant accepted the plan',
+  PLAN_DECLINED: 'The merchant declined the plan', REMINDER_DUE: 'No reply for a day — reminder due',
+  DUE_TODAY: 'A payment is due today — reminder', PROMISE_DUE: 'The promised payment date passed',
+  INSTALLMENT_DUE: 'A plan payment date passed',
+  HUMAN_DECISION: 'A manager decided', TOOL_RETRY: 'Retrying after an outage',
+  DEADLINE_PASSED: 'The case deadline passed',
+};
+// Merchant-side status lines.
+const MERCHANT_LINES = {
+  NEW: 'No messages yet.', WORKING: 'Assistant is typing…', WAITING: 'The assistant is waiting for your reply.',
+  NEEDS_APPROVAL: 'Our team is reviewing a payment plan for you.', ON_PLAN: "You're on a payment plan.",
+  RESOLVED: 'All paid. Thank you!', ESCALATED: 'A member of our team will contact you.',
+};
+const ACTORS = { agent: 'AI', system: 'code', human: 'person' };
+const TOOL_ICONS = {
+  check_payments: '💳', get_sales_summary: '📈', record_promise: '🤝', propose_plan: '🗓️',
+  send_message: '💬', escalate_to_human: '🙋',
+};
+const STATE_TONE = {
+  NEW: 'neutral', WORKING: 'accent', WAITING: 'accent', ON_PLAN: 'accent',
+  NEEDS_APPROVAL: 'warn', RESOLVED: 'ok', ESCALATED: 'bad',
+};
+const OUTCOME_TONE = { ok: 'ok', rejected: 'warn', failed: 'bad' };
+const DECISION_TONE = {
+  ran_agent: 'accent', handled_by_code: 'ok', stored_for_human: 'warn', skipped: 'neutral', escalated: 'bad',
+  failed: 'bad',
+};
+const PLAN_TONE = { offered: 'accent', active: 'accent', completed: 'ok', pending_approval: 'warn', broken: 'bad' };
+function stopTone(reason) {
+  if (!reason) return 'neutral';
+  if (reason === 'resolved') return 'ok';
+  if (reason === 'waiting_on_merchant' || reason === 'plan_offered') return 'accent';
+  if (reason === 'needs_approval' || reason.startsWith('paused:')) return 'warn';
+  return 'bad';
+}
+
+// ---------- app state ----------
+const S = {
+  state: null,          // GET /api/state
+  detail: null,         // GET /api/cases/{id} for detailId
+  detailId: null,
+  detailError: null,
+  online: true,
+  lastCase: null,       // shared between the two tabs
+  inFlight: 0,          // POSTs running
+  busyKey: null,        // which button shows a spinner
+  pending: null,        // merchant message shown before the server confirms it
+  typingFor: null,      // case id while we wait for an AI answer we triggered
+  payOpen: false,
+  drafts: {},           // text typed in note boxes, kept across re-renders
+  openDetails: new Set(),
+};
+
+// ---------- server ----------
+async function api(path, body) {
+  const options = body === undefined
+    ? { cache: 'no-store' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (err) {
+    throw new Error('Could not reach the server. Is it still running?');
+  }
+  let data = null;
+  try { data = await res.json(); } catch (err) { /* not JSON */ }
+  if (!res.ok) throw new Error((data && data.error) || `The server answered with an error (HTTP ${res.status}).`);
+  if (!data) throw new Error('The server sent an answer the page could not read.');
+  return data;
+}
+
+let refreshing = null;
+let refreshAgain = false;
+async function refresh() {
+  if (refreshing) { refreshAgain = true; return refreshing; }
+  refreshing = (async () => {
+    const id = routeCaseId();
+    try {
+      S.state = await api('/api/state');
+      S.online = true;
+    } catch (err) {
+      S.online = false;
+      $('#offline').textContent = `${err.message} Retrying…`;
+    }
+    if (S.online && id) {
+      try {
+        S.detail = await api('/api/cases/' + encodeURIComponent(id));
+        S.detailError = null;
+      } catch (err) {
+        S.detail = null;
+        S.detailError = err.message;
+      }
+      S.detailId = id;
+    }
+    pickDefaultCase();
+    render();
+  })();
+  try { await refreshing; } finally { refreshing = null; }
+  if (refreshAgain) { refreshAgain = false; await refresh(); }
+}
+
+// Poll every 1 s while something is happening, otherwise every 5 s.
+let pollTimer = null;
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const c = S.detail && S.detailId === routeCaseId() ? S.detail.case : null;
+  const fast = S.inFlight > 0 || (c && (c.state === 'WORKING' || c.busy));
+  pollTimer = setTimeout(async () => { await refresh(); schedulePoll(); }, fast ? 1000 : 5000);
+}
+
+// Runs one POST: spinner on the button, inputs locked, errors shown with the server's own text.
+async function post(path, body, key) {
+  S.inFlight += 1;
+  S.busyKey = key || null;
+  render();
+  schedulePoll();
+  try {
+    return await api(path, body || {});
+  } catch (err) {
+    toast({ tone: 'error', title: "That didn't work", lines: [esc(err.message)] });
+    return null;
+  } finally {
+    S.inFlight -= 1;
+    if (S.busyKey === key) S.busyKey = null;
+    await refresh();
+    schedulePoll();
+  }
+}
+const casePath = (id, action) => `/api/cases/${encodeURIComponent(id)}/${action}`;
+
+// ---------- routing: #merchant, #merchant/case-x, #ai/case-x ----------
+function route() {
+  const [tab, id] = decodeURIComponent(location.hash.replace(/^#/, '')).split('/');
+  return { tab: tab === 'ai' ? 'ai' : 'merchant', id: id || null };
+}
+function routeCaseId() {
+  return route().id;
+}
+function pickDefaultCase() {
+  const r = route();
+  const cases = S.state ? S.state.cases || [] : [];
+  if (r.tab !== 'ai' || r.id || !cases.length) return;
+  const keep = cases.some((c) => c.case_id === S.lastCase);
+  history.replaceState(null, '', '#ai/' + encodeURIComponent(keep ? S.lastCase : cases[0].case_id));
+  refreshAgain = true;
+}
+let lastView = '';
+function onRoute() {
+  const r = route();
+  if (r.id) S.lastCase = r.id;
+  const view = r.tab + '/' + (r.id || '');
+  if (view !== lastView) {
+    S.payOpen = false;
+    if (r.tab === 'ai' && lastView.startsWith('ai/') && r.id && window.innerWidth <= 900) {
+      $('#dDetail').scrollIntoView({ block: 'start' });
+    } else if (!(r.tab === 'ai' && lastView.startsWith('ai/'))) {
+      window.scrollTo(0, 0);
+    }
+  }
+  lastView = view;
+  render();
+  refresh();
+  schedulePoll();
+}
+
+// ---------- rendering helpers ----------
+// Re-render a region only when its HTML changed, keeping typed notes and keyboard focus.
+function setHTML(el, html) {
+  if (el.__html === html) return false;
+  const active = document.activeElement;
+  const focusKey = active && el.contains(active) ? (active.dataset.draft || active.dataset.key || null) : null;
+  const selection = active && active.dataset && active.dataset.draft ? [active.selectionStart, active.selectionEnd] : null;
+  el.innerHTML = html;
+  el.__html = html;
+  el.querySelectorAll('[data-draft]').forEach((box) => { box.value = S.drafts[box.dataset.draft] || ''; });
+  if (focusKey) {
+    const again = [...el.querySelectorAll('[data-draft],[data-key]')]
+      .find((node) => (node.dataset.draft || node.dataset.key) === focusKey);
+    if (again) {
+      again.focus();
+      if (selection && again.setSelectionRange) again.setSelectionRange(selection[0], selection[1]);
+    }
+  }
+  return true;
+}
+function stateChip(c) {
+  const working = c.state === 'WORKING' || c.busy;
+  return `<span class="chip tone-${STATE_TONE[c.state] || 'neutral'}">${working ? '<span class="spinner" aria-hidden="true"></span>' : ''}${esc(c.state_label || STATE_LABELS[c.state] || c.state)}</span>`;
+}
+function rawStateChip(state) {
+  return `<span class="chip tone-${STATE_TONE[state] || 'neutral'}" title="${esc(state)}">${esc(STATE_LABELS[state] || state)}</span>`;
+}
+// Buttons that live inside re-rendered regions: label is trusted static HTML.
+function button(label, act, opts = {}) {
+  const key = opts.key || act;
+  const data = Object.entries(opts.data || {}).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
+  const busy = S.busyKey === key ? ' is-busy' : '';
+  const disabled = S.inFlight > 0 ? ' disabled' : '';
+  return `<button type="button" class="btn ${opts.cls || ''}${busy}" data-act="${act}" data-key="${esc(key)}"${data}${disabled}>${label}</button>`;
+}
+function head(title, note) {
+  return `<div class="panel-h"><h2>${title}</h2>${note ? `<p class="note">${note}</p>` : ''}</div>`;
+}
+function caseName(id) {
+  const c = S.state && (S.state.cases || []).find((x) => x.case_id === id);
+  return c ? c.merchant.business_name : id;
+}
+function planTable(plan) {
+  const rows = (plan.installments || []).map((i) => `<tr class="${i.paid ? 'is-paid' : ''}"><td>${esc(i.n)}</td>
+    <td>${esc(egp(i.amount))}</td><td>${esc(fmtDay(i.due_date))}</td>
+    <td>${i.paid ? '<span class="tick">✓ Paid</span>' : ''}</td></tr>`).join('');
+  return `<table class="inst"><thead><tr><th>#</th><th>Amount</th><th>Due</th><th><span class="sr-only">Status</span></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ---------- toasts ----------
+function toast({ tone = 'info', title, lines = [] }) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + tone;
+  el.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+  el.innerHTML = `<button class="x" type="button" aria-label="Dismiss">×</button><h3>${esc(title)}</h3>`
+    + (lines.length ? `<ul>${lines.map((line) => `<li>${line}</li>`).join('')}</ul>` : '');
+  el.querySelector('.x').addEventListener('click', () => el.remove());
+  $('#toasts').append(el);
+  while ($('#toasts').children.length > 3) $('#toasts').firstElementChild.remove();
+  if (tone !== 'error') setTimeout(() => el.remove(), 6000);  // errors stay until closed
+}
+const isBad = (o) => o.decision === 'escalated' || o.decision === 'failed';
+// One line per outcome, using the server's labels.
+function outcomeLine(o) {
+  const what = o.type_label || TYPE_LABELS[o.type] || o.type;
+  const result = [o.decision_label || o.decision, o.stop_label || o.detail].filter(Boolean).join(': ');
+  return `<b>${esc(caseName(o.case_id))}</b> · ${esc(what)} → ${esc(result)}`;
+}
+function report(data, title, opts = {}) {
+  if (!data) return;
+  const outcomes = (data.outcomes || []).filter((o) => !(opts.quietWhenAiRan && o.decision === 'ran_agent'));
+  if (!outcomes.length && opts.quietWhenAiRan) return;
+  const bad = outcomes.some(isBad);
+  toast({ tone: bad ? 'error' : 'good', title, lines: outcomes.length ? outcomes.map(outcomeLine) : [esc(opts.empty || 'Done.')] });
+}
+
+// ---------- merchant app ----------
+function renderHome() {
+  const cases = S.state ? S.state.cases || [] : null;
+  if (!cases) { setHTML($('#homeCards'), '<p class="empty">Loading merchants…</p>'); return; }
+  setHTML($('#homeCards'), cases.map((c) => {
+    const m = c.merchant || {};
+    const amount = c.balance > 0
+      ? `<b>${esc(egp(c.balance))}</b> · ${esc(plural(c.days_overdue, 'day'))} late`
+      : `<b>Paid ✓</b> · ${esc(egp(c.amount_due))}`;
+    return `<a class="mcard" href="#merchant/${encodeURIComponent(c.case_id)}">
+      <div class="mcard-top"><div><h2>${esc(m.business_name)}</h2><p class="who">${esc(m.owner_name)} · ${esc(m.category)}</p></div>${stateChip(c)}</div>
+      <p class="amount">${amount}</p>
+      <p class="hint"><span aria-hidden="true">💡</span> ${esc(c.story)}</p>
+      <span class="go">Play as ${esc(m.first_name)} →</span></a>`;
+  }).join(''));
+}
+
+function currentDetail() {
+  const id = routeCaseId();
+  return S.detail && S.detailId === id ? S.detail : null;
+}
+function isTyping(c) {
+  return S.typingFor === c.case_id || c.state === 'WORKING' || Boolean(c.busy);
+}
+// Amount to prefill: the next plan payment, otherwise the whole balance.
+function nextPayment(d) {
+  const plan = (d.plans || []).find((p) => p.status === 'active');
+  const item = plan && (plan.installments || []).find((i) => !i.paid);
+  return item ? Math.min(item.amount, d.case.balance) : d.case.balance;
+}
+
+function renderCase(id) {
+  const d = currentDetail();
+  const failed = !d && S.detailError && S.detailId === id;
+  $('#cMissing').hidden = !failed;
+  if (failed) setHTML($('#cMissing'), `<p>Could not load this merchant: ${esc(S.detailError)}</p>`);
+  ['#cBody', '#cPlan', '#cStart', '#chat', '#cStatus', '#composer', '#seeAi'].forEach((sel) => { $(sel).hidden = !d; });
+  if (!d) {
+    setHTML($('#cTitle'), failed ? 'Merchant not found' : 'Loading…');
+    setHTML($('#cChip'), '');
+    return;
+  }
+  const c = d.case;
+  const m = c.merchant || {};
+  const typing = isTyping(c);
+  setHTML($('#cTitle'), `<span>Repayment Assistant ·</span> ${esc(m.business_name)}`);
+  setHTML($('#cChip'), stateChip(c));
+  renderBalance(d);
+  const plan = (d.plans || []).find((p) => p.status === 'active');
+  setHTML($('#cPlan'), plan ? `<div class="card"><h2 class="card-title">Your payment plan</h2>${planTable(plan)}</div>` : '');
+  setHTML($('#cStart'), c.state === 'NEW' ? `<div class="card start">
+      <p>The assistant hasn't contacted this merchant yet. <span class="muted">(In real life this starts automatically
+      when a payment is late.)</span></p>${button('▶ Start', 'start', { cls: 'primary big' })}</div>` : '');
+  renderChat(d, typing);
+  $('#cStatus').textContent = typing ? 'Assistant is typing…' : (MERCHANT_LINES[c.state] || '');
+
+  const locked = S.inFlight > 0 || typing;
+  $('#composer').hidden = c.state === 'RESOLVED';
+  $('#msg').disabled = locked;
+  $('#sendBtn').disabled = locked || !$('#msg').value.trim();
+  $('#sendBtn').classList.toggle('is-busy', S.busyKey === 'reply');
+  $('#msg').placeholder = ['ESCALATED', 'NEEDS_APPROVAL'].includes(c.state)
+    ? 'Write a message — our team will read it…' : `Write a reply as ${m.first_name || 'the merchant'}…`;
+  const chips = (c.suggestions || []).map((s) => `<button type="button" class="sugg" data-act="chip" data-text="${esc(s)}"
+    data-key="chip:${esc(s)}" dir="auto"${locked ? ' disabled' : ''}>${esc(s)}</button>`).join('');
+  setHTML($('#chips'), chips ? `<span class="suggest-label">Tap a suggested reply, or write your own:</span>${chips}` : '');
+  $('#seeAi').href = '#ai/' + encodeURIComponent(id);
+}
+
+function renderBalance(d) {
+  const c = d.case;
+  const paid = Number(c.paid || 0);
+  const share = c.amount_due > 0 ? Math.round((paid / c.amount_due) * 100) : 0;
+  const top = c.balance > 0
+    ? `<p class="owe-label">You owe</p><p class="big">${esc(egp(c.balance))}</p>
+       <p class="muted">was due ${esc(fmtDay(c.due_date))} (${esc(plural(c.days_overdue, 'day'))} late)</p>`
+    : `<p class="owe-label">Your balance</p><p class="big paid">Paid ✓</p>
+       <p class="muted">${esc(egp(c.amount_due))} paid in full.</p>`;
+  setHTML($('#cBalance'), `${top}<div class="progress" role="progressbar" aria-label="Paid so far" aria-valuemin="0"
+    aria-valuemax="100" aria-valuenow="${share}"><span style="width:${share}%"></span></div>
+    <p class="note">Paid ${esc(num(paid))} of ${esc(egp(c.amount_due))}</p>`);
+  const canPay = c.balance > 0;
+  if (!canPay) S.payOpen = false;
+  $('#payRow').hidden = !canPay || S.payOpen;
+  $('#payForm').hidden = !canPay || !S.payOpen;
+  $('#payToggle').setAttribute('aria-expanded', String(S.payOpen));
+  $('#paySubmit').disabled = S.inFlight > 0;
+  $('#paySubmit').classList.toggle('is-busy', S.busyKey === 'pay');
+}
+
+function renderChat(d, typing) {
+  const c = d.case;
+  const msgs = d.messages || [];
+  const plans = new Map((d.plans || []).map((p) => [String(p.id), p]));
+  const flags = new Map((d.flags || []).map((f) => [String(f.message_id), f.text]));
+  let html = msgs.map((m) => bubble(m, plans, flags, c.state)).join('');
+  const p = S.pending;
+  const confirmed = p && msgs.some((m) => m.sender === 'merchant' && m.id > p.afterId && String(m.body).trim() === p.text);
+  if (p && p.caseId === c.case_id && !confirmed) {
+    html += `<div class="msg me pending"><div class="text" dir="auto">${esc(p.text)}</div><span class="when">Sending…</span></div>`;
+  }
+  if (typing) html += '<div class="typing" aria-hidden="true"><i></i><i></i><i></i></div>';
+  const chat = $('#chat');
+  chat.hidden = !html;
+  if (setHTML(chat, html)) chat.scrollTop = chat.scrollHeight;
+}
+
+function bubble(m, plans, flags, caseState) {
+  const when = `<span class="when">${esc(fmtTime(m.at))}</span>`;
+  if (m.sender === 'system') {
+    const receipt = m.kind === 'receipt';
+    return `<div class="msg sys${receipt ? ' receipt' : ''}"><div class="text" dir="auto">${receipt ? '🧾 ' : ''}${esc(m.body)}</div>${when}</div>`;
+  }
+  const plan = m.kind === 'plan_offer' && m.plan_id != null ? plans.get(String(m.plan_id)) : null;
+  const flag = flags.get(String(m.id)) || (m.flag ? 'Flagged' : '');
+  return `<div class="msg ${m.sender === 'merchant' ? 'me' : 'bot'}"><div class="text" dir="auto">${esc(m.body)}</div>`
+    + `${plan ? offer(plan, caseState) : ''}${when}</div>${flag ? `<p class="flag">⚑ ${esc(flag)}</p>` : ''}`;
+}
+
+// Accept/Decline only while the server would act on them: an offered plan and a case waiting for the merchant.
+function offer(plan, caseState) {
+  const actions = plan.status === 'offered' && caseState === 'WAITING'
+    ? `<div class="offer-actions">${button('Accept', 'accept', { cls: 'primary small', key: 'accept:' + plan.id, data: { plan: plan.id } })}`
+      + `${button('Decline', 'decline', { cls: 'small', key: 'decline:' + plan.id, data: { plan: plan.id } })}</div>`
+    : `<p class="offer-status"><span class="chip tone-${PLAN_TONE[plan.status] || 'neutral'}">${esc(plan.status_label || plan.status)}</span></p>`;
+  return planTable(plan) + actions;
+}
+
+// ---------- merchant actions ----------
+async function sendReply(raw, fromBox) {
+  const d = currentDetail();
+  const text = String(raw || '').trim();
+  if (!text || !d || S.inFlight > 0) return;
+  const c = d.case;
+  S.pending = { caseId: c.case_id, text, afterId: Math.max(0, ...(d.messages || []).map((m) => Number(m.id) || 0)) };
+  S.typingFor = ['NEW', 'WAITING', 'ON_PLAN'].includes(c.state) ? c.case_id : null;
+  const box = $('#msg');
+  if (fromBox) { box.value = ''; autosize(); }
+  const data = await post(casePath(c.case_id, 'reply'), { text }, 'reply');
+  S.pending = null;
+  S.typingFor = null;
+  if (!data && fromBox && !box.value) { box.value = text; autosize(); }
+  render();
+  report(data, 'Message saved', { quietWhenAiRan: true });
+  if (fromBox && !$('#composer').hidden) box.focus();
+}
+
+// Merchant-side actions. When the AI may answer, the typing bubble shows while the request runs.
+async function chatAction(id, action, key, title, aiMayAnswer = true) {
+  S.typingFor = aiMayAnswer ? id : null;
+  const data = await post(casePath(id, action), {}, key);
+  S.typingFor = null;
+  render();
+  report(data, title, { quietWhenAiRan: true });
+}
+
+function autosize() {
+  const box = $('#msg');
+  box.style.height = 'auto';
+  box.style.height = Math.min(box.scrollHeight + 2, 150) + 'px';
+}
+
+$('#composer').addEventListener('submit', (e) => { e.preventDefault(); sendReply($('#msg').value, true); });
+$('#msg').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendReply($('#msg').value, true); }
+});
+$('#msg').addEventListener('input', () => {
+  autosize();
+  $('#sendBtn').disabled = $('#msg').disabled || !$('#msg').value.trim();  // nothing to send yet
+});
+$('#payToggle').addEventListener('click', () => {
+  const d = currentDetail();
+  if (!d) return;
+  S.payOpen = true;
+  $('#payAmount').value = nextPayment(d);
+  render();
+  $('#payAmount').focus();
+  $('#payAmount').select();
+});
+$('#payCancel').addEventListener('click', () => { S.payOpen = false; render(); $('#payToggle').focus(); });
+$('#payForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = routeCaseId();
+  const amount = Number($('#payAmount').value);
+  const data = await post(casePath(id, 'pay'), { amount }, 'pay');
+  if (data) {
+    S.payOpen = false;
+    render();
+    report(data, `Payment of ${egp(amount)} sent`);
+  }
+});
+
+// ---------- AI dashboard ----------
+function renderAi() {
+  renderOverview();
+  renderCaseList();
+  const id = routeCaseId();
+  const d = currentDetail();
+  const panels = ['#dDone', '#dHuman', '#dLimits', '#dRuns', '#dEvents', '#dHistory', '#dLogs', '#dTools'];
+  if (!d) {
+    const failed = S.detailError && S.detailId === id;
+    setHTML($('#dHead'), failed
+      ? `<p>Could not load this case: ${esc(S.detailError)}</p><p class="note">Pick a case from the list.</p>`
+      : '<p class="empty"><span class="spinner" aria-hidden="true"></span> Loading the case…</p>');
+    panels.forEach((sel) => { $(sel).hidden = true; });
+    return;
+  }
+  panels.forEach((sel) => { $(sel).hidden = false; });
+  renderDetailHead(d);
+  renderDone(d);
+  renderHuman(d);
+  renderLimits(d);
+  renderRuns(d);
+  renderEvents(d);
+  renderHistory(d);
+  renderLogs(d);
+  renderTestTools(d);
+}
+
+function renderOverview() {
+  const st = S.state;
+  if (!st) { setHTML($('#dOverview'), '<p class="empty">Loading…</p>'); return; }
+  const m = st.metrics || {};
+  const by = m.by_state || {};
+  const tiles = [
+    ['Cases resolved', `${num(by.RESOLVED)} <small>of ${num(m.cases_total)}</small>`, `${pct(m.resolved_rate)} paid in full`],
+    ['With a person', `${num(by.ESCALATED)}`, `${pct(m.escalation_rate)} of cases escalated`],
+    ['Money recovered', `${num(m.amount_recovered)} <small>EGP</small>`, `${pct(m.recovery_rate)} of ${egp(m.amount_overdue_total)}`],
+    ['AI runs per case', `${num(m.avg_runs_per_case)}`, `about ${num(m.avg_steps_per_run)} steps per run`],
+    ['AI cost (est.)', usd(m.total_cost_usd), `${num(m.total_tokens)} tokens, at paid-tier prices`],
+    ['Tool failure rate', pct(m.tool_failure_rate), 'payment and sales calls that failed'],
+  ].map(([k, v, s]) => `<div class="tile"><p class="k">${k}</p><p class="v">${v}</p><p class="s">${esc(s)}</p></div>`);
+  const alerts = (st.alerts || []).map((a) => {
+    const link = a.case_id ? ` <a href="#ai/${encodeURIComponent(a.case_id)}">Open case →</a>` : '';
+    return `<li class="alert lvl-${esc(a.level)}"><span class="dot" aria-hidden="true"></span><span class="grow">${esc(a.text)}${link}</span></li>`;
+  });
+  setHTML($('#dOverview'), head('Overview — all cases')
+    + `<div class="tiles">${tiles.join('')}</div>`
+    + `<ul class="alerts" aria-label="Alerts">${alerts.length ? alerts.join('')
+      : '<li class="alert lvl-ok"><span class="dot" aria-hidden="true"></span><span class="grow">No alerts — every case is within its limits.</span></li>'}</ul>`);
+}
+
+function renderCaseList() {
+  const cases = S.state ? S.state.cases || [] : [];
+  const id = routeCaseId();
+  setHTML($('#dCases'), cases.map((c) => `<a class="citem" href="#ai/${encodeURIComponent(c.case_id)}"
+      aria-current="${c.case_id === id}"><span class="nm">${esc(c.merchant.business_name)}</span>
+      ${c.needs_human ? '<span class="needs">Needs you</span>' : ''}
+      <span class="sub">${stateChip(c)}<span>${c.balance > 0 ? esc(egp(c.balance)) + ' left' : 'Paid ✓'}</span></span></a>`).join('')
+    || '<p class="empty">Loading…</p>');
+}
+
+function renderDetailHead(d) {
+  const c = d.case;
+  const m = c.merchant || {};
+  const flags = (d.flags || []).length;
+  const stop = c.last_stop_reason ? `<dt>Why the AI stopped last</dt><dd>${esc(c.stop_label)}</dd>` : '';
+  setHTML($('#dHead'), `<div class="d-title"><h2>${esc(m.business_name)}</h2>${stateChip(c)}</div>
+    <p class="muted small">${esc(m.owner_name)} · ${esc(m.category)} · ${esc(m.platform)} · ${esc(c.case_id)}</p>
+    <dl class="kv">
+      <dt>Where it stands</dt><dd>${esc(c.where)}</dd>
+      <dt>What happens next</dt><dd>${esc(d.next)}</dd>${stop}
+    </dl>
+    ${flags ? `<p class="callout warn">⚑ ${esc(plural(flags, 'merchant message'))} looked like instructions to the AI.
+      ${flags === 1 ? 'It was' : 'They were'} treated as plain data and flagged — no tool can change money.</p>` : ''}
+    <a href="#merchant/${encodeURIComponent(c.case_id)}">Open in merchant app →</a>`);
+}
+
+function renderDone(d) {
+  const done = d.done || {};
+  const share = done.total > 0 ? Math.round((done.paid / done.total) * 100) : 0;
+  setHTML($('#dDone'), head('Finish line', 'Code decides when the case is done. The AI has no tool to close it.')
+    + `<p class="done-text${done.done ? ' is-done' : ''}">${done.done ? '✓ ' : ''}${esc(done.text)}</p>
+    <div class="progress lg" role="progressbar" aria-label="Paid so far" aria-valuemin="0" aria-valuemax="100"
+      aria-valuenow="${share}"><span style="width:${share}%"></span></div>`);
+}
+
+const HARD_CAPS = ['cap:messages', 'cap:budget', 'cap:deadline'];  // a hand-back does not reset these
+function renderHuman(d) {
+  const c = d.case;
+  const parts = [];
+  const noteBox = (placeholder) => `<label class="field">Note for the AI (optional)
+    <textarea rows="2" maxlength="2000" dir="auto" data-draft="note:${esc(c.case_id)}" placeholder="${placeholder}"></textarea></label>`;
+  const pending = (d.plans || []).find((p) => p.status === 'pending_approval');
+  if (c.state === 'NEEDS_APPROVAL' && pending) {
+    parts.push(`<div class="human-part"><h3>The AI proposed a plan beyond its limits</h3>
+      <p class="why">${esc(pending.why)}</p>${planTable(pending)}
+      <p class="small"><span class="muted">Message the merchant gets if you approve:</span></p>
+      <blockquote class="quote" dir="auto">${esc(pending.message)}</blockquote>
+      ${noteBox('e.g. Offer 2 payments within 30 days instead.')}
+      <div class="actions">${button('✓ Approve plan', 'approve', { cls: 'primary' })}${button('✗ Reject plan', 'reject')}</div>
+      <p class="note">Approve sends the offer to the merchant (code only). Reject wakes the AI with your note.</p></div>`);
+  }
+  if (c.state === 'ESCALATED') {
+    parts.push(`<div class="human-part"><h3>A person owns this case — the AI is stopped</h3>
+      <p>Reason: <b>${esc(c.escalation_reason || c.stop_label || 'not given')}</b></p>
+      ${noteBox('e.g. I called the merchant; they will pay 5,000 EGP on Friday.')}
+      <div class="actions">${button('↩ Hand back to AI', 'handback', { cls: 'primary' })}</div>
+      <p class="note">${HARD_CAPS.includes(c.last_stop_reason)
+        ? 'This limit stays reached, so handing back sends the case straight back to a person.'
+        : 'The AI starts again with your note. The reminder and retry counters reset.'}</p></div>`);
+  }
+  if (c.retry_at && c.state !== 'ESCALATED') {
+    parts.push(`<div class="human-part"><h3>Paused by an outage</h3>
+      <p>${esc(c.stop_label)} Next automatic retry: <b>${esc(fmtTime(c.retry_at))}</b>.</p>
+      <div class="actions">${button('↻ Retry now', 'retry', { cls: 'primary' })}</div></div>`);
+  }
+  const el = $('#dHuman');
+  el.hidden = !parts.length;
+  el.classList.toggle('is-bad', c.state === 'ESCALATED');
+  const onlyPaused = parts.length === 1 && c.retry_at && c.state !== 'ESCALATED';
+  setHTML(el, parts.length ? head(onlyPaused ? 'Paused — it retries by itself' : 'Needs a person')
+    + parts.join('') : '');
+}
+
+function limitValue(l) {
+  if (l.unit === 'usd') return `${usd(l.used)} of ${usd(l.max)}`;
+  if (l.unit === 'days') return `${num(l.used)} of ${num(l.max)} days`;
+  return `${num(l.used)} of ${num(l.max)}`;
+}
+function renderLimits(d) {
+  const gauges = (d.limits || []).map((l) => {
+    const ratio = l.max > 0 ? Number(l.used) / Number(l.max) : 0;
+    const level = ratio >= 1 ? 'bad' : ratio >= 0.8 ? 'warn' : '';
+    const width = Math.min(100, Math.round(ratio * 100));
+    return `<div><div class="g-row"><span>${esc(l.label)}</span>
+      <b class="${level === 'bad' ? 'g-max' : level === 'warn' ? 'g-near' : ''}">${esc(limitValue(l))}</b></div>
+      <div class="bar" aria-hidden="true"><span class="${level ? 'fill-' + level : ''}" style="width:${width}%"></span></div></div>`;
+  }).join('');
+  setHTML($('#dLimits'), head('Limits enforced by code',
+    'Reaching any limit hands the case to a person, so nothing can loop forever.') + `<div class="gauges">${gauges}</div>`);
+}
+
+function renderRuns(d) {
+  const runs = d.runs || [];
+  const body = runs.length ? runs.map(runCard).join('')
+    : `<p class="empty">The AI hasn't run yet. ${d.case.state === 'NEW' ? 'Press Start in the merchant app.' : ''}</p>`;
+  setHTML($('#dRuns'), head('What the AI did', 'Each run is one wake-up: the AI calls tools until it messages '
+    + 'the merchant, proposes a plan or hands the case to a person. Newest first.') + body);
+}
+function runCard(run) {
+  const active = run.status === 'active';
+  const stopText = run.stop_label || (active ? 'Working on it now…' : run.status === 'abandoned'
+    ? 'Stopped mid-run (the server restarted); code recovered the case.' : '');
+  const tokens = Number(run.tokens_in || 0) + Number(run.tokens_out || 0);
+  const chips = [
+    plural(run.llm_calls, 'LLM call'), `${num(tokens)} tokens`, `${usd(run.cost_usd)} est.`,
+    run.duration_ms != null ? secs(run.duration_ms) : '', (run.models || []).join(', '),
+  ].filter(Boolean).map((t) => `<span class="mchip">${esc(t)}</span>`).join('');
+  const steps = (run.steps || []).map((s) => stepItem(run, s)).join('');
+  return `<article class="run"><div class="run-head">
+      <div class="run-title"><b>${esc(run.trigger_label || run.trigger)}</b><time>${esc(fmtTime(run.started_at))}</time>
+        ${active ? '<span class="chip tone-accent"><span class="spinner" aria-hidden="true"></span>Running</span>' : ''}</div>
+      <p class="stop tone-text-${active ? 'accent' : stopTone(run.stop_reason)}"><span class="dot" aria-hidden="true"></span><span>${esc(stopText)}</span></p>
+      <div class="mchips">${chips}</div></div>
+    ${steps ? `<ol class="steps">${steps}</ol>` : '<p class="empty steps">No steps yet.</p>'}</article>`;
+}
+function stepItem(run, s) {
+  const key = `args:${run.run_id}:${s.n}`;
+  const icon = TOOL_ICONS[s.tool] || '⚠️';
+  const cost = s.tokens_in || s.tokens_out
+    ? `${num(s.tokens_in)} in / ${num(s.tokens_out)} out tokens · ${usd(s.cost_usd)} · ` : '';
+  const tries = Number(s.attempts) > 1 ? ` · ${num(s.attempts)} attempts` : '';
+  return `<li class="step"><span class="num">${esc(s.n)}</span><div>
+      <div class="step-head"><span class="tool"><span aria-hidden="true">${icon}</span> ${esc(s.tool_label || s.tool || 'No tool')}</span>
+        <span class="chip tone-${OUTCOME_TONE[s.outcome] || 'neutral'}">${esc(s.outcome_label || s.outcome)}</span></div>
+      ${s.reason ? `<p class="reason" dir="auto">“${esc(s.reason)}”</p>` : ''}
+      ${s.summary ? `<p class="summary" dir="auto">${esc(s.summary)}</p>` : ''}
+      <p class="meta">${cost}AI ${num(s.latency_ms)} ms${tries}</p>
+      ${s.args && Object.keys(s.args).length ? `<details class="args" data-open="${esc(key)}"${S.openDetails.has(key) ? ' open' : ''}>
+        <summary>details</summary><pre>${esc(JSON.stringify(s.args, null, 2))}</pre></details>` : ''}
+    </div></li>`;
+}
+
+function renderEvents(d) {
+  const rows = (d.events || []).map((e) => `<tr class="${e.decision === 'skipped' ? 'dup' : ''}">
+      <td class="time">${esc(fmtTime(e.at))}</td>
+      <td>${esc(e.type_label || e.type)}<span class="ev-id">${esc(e.event_id)}</span></td>
+      <td><span class="chip tone-${DECISION_TONE[e.decision] || 'neutral'}">${esc(e.decision_label)}</span></td>
+      <td>${esc(e.detail)}</td></tr>`).join('');
+  setHTML($('#dEvents'), head('Events: what woke the AI', 'Every wake-up is an event. Code decides '
+    + 'whether it needs the AI; duplicates and stale timers are ignored. Newest first.')
+    + (rows ? `<table class="evt"><thead><tr><th>Time</th><th>Event</th><th>Decision</th><th>Detail</th></tr></thead>
+      <tbody>${rows}</tbody></table>` : '<p class="empty">No events yet.</p>'));
+}
+
+function renderHistory(d) {
+  const items = (d.transitions || []).map((t) => `<li><span class="time">${esc(fmtTime(t.at))}</span><div>
+      <div class="move">${t.from ? rawStateChip(t.from) : ''}<span aria-hidden="true">→</span>${rawStateChip(t.to)}</div>
+      <p class="by">by <b>${esc(ACTORS[t.actor] || t.actor)}</b>${t.note ? ' · ' + esc(t.note) : ''}</p></div></li>`).join('');
+  setHTML($('#dHistory'), head('State history', 'Every state change and who made it: the AI, code or a person.')
+    + (items ? `<ul class="hist">${items}</ul>` : '<p class="empty">No changes yet.</p>'));
+}
+
+function renderLogs(d) {
+  const lines = d.logs || [];
+  const open = S.openDetails.has('logs');
+  const pre = $('#dLogs pre');
+  const atEnd = !pre || pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
+  const changed = setHTML($('#dLogs'), head('Logs — JSON lines, PII redacted', 'What a log system would '
+    + 'receive. Names, phones and emails are replaced before anything is stored.')
+    + (lines.length ? `<details data-open="logs"${open ? ' open' : ''}><summary>Show the last ${esc(plural(lines.length, 'line'))}</summary>
+      <pre class="logs">${lines.map(esc).join('\n')}</pre></details>` : '<p class="empty">No log lines yet.</p>'));
+  const fresh = $('#dLogs pre');
+  if (changed && fresh && atEnd) fresh.scrollTop = fresh.scrollHeight;
+}
+
+function renderTestTools(d) {
+  const c = d.case;
+  const outages = (S.state && S.state.outages) || {};
+  const outageRow = (service, name, what) => {
+    const left = Number(outages[service] || 0);
+    return `<div class="tool-row"><div><b>${name} system outage</b>
+      <p>${left ? `<span class="on">On: the next ${esc(plural(left, 'call'))} will fail.</span> ` : ''}Makes the next 3 ${what}
+      calls fail (all cases). The AI pauses and retries later instead of guessing.</p></div>
+      ${left ? button('Turn off', 'outage', { key: 'outage:' + service, data: { service, failures: 0 } })
+        : button('Start outage', 'outage', { key: 'outage:' + service, data: { service, failures: 3 } })}</div>`;
+  };
+  const confirmRow = c.pending_payments > 0 ? `<div class="tool-row"><div><b>Confirm pending bank transfer</b>
+      <p>The bank confirms ${esc(plural(c.pending_payments, 'pending transfer'))}; code applies the money.</p></div>
+      ${button('✓ Confirm transfer', 'confirm')}</div>` : '';
+  setHTML($('#dToolsBody'), `<div class="tool-rows">
+    <div class="tool-row"><div><b>Replay the last event</b><p>Delivers the same event again, with the same id. Code
+      sees the duplicate and ignores it (watch the events table).</p></div>${button('↻ Replay last event', 'replay')}</div>
+    ${outageRow('payments', 'Payment', 'payment-check')}${outageRow('sales', 'Sales', 'sales-check')}${confirmRow}</div>`);
+}
+
+// ---------- dashboard actions ----------
+async function decide(id, action, key, title) {
+  const draft = 'note:' + id;
+  const data = await post(casePath(id, 'decision'), { action, note: (S.drafts[draft] || '').trim() }, key);
+  if (data) S.drafts[draft] = '';
+  report(data, title);
+}
+async function caseAction(id, action, key, title) {
+  report(await post(casePath(id, action), {}, key), title);
+}
+async function setOutage(service, failures) {
+  const name = service === 'payments' ? 'Payment' : 'Sales';
+  const data = await post('/api/outage', { service, failures }, 'outage:' + service);
+  if (!data) return;
+  toast(failures
+    ? { tone: 'good', title: `${name} system outage started`, lines: [`The next ${failures} calls fail. Send a message that makes the AI check ${service}.`] }
+    : { tone: 'good', title: `${name} system is back`, lines: ['Calls work normally again.'] });
+}
+
+// ---------- page ----------
+function render() {
+  const r = route();
+  if (r.id) S.lastCase = r.id;
+  renderHeader(r);
+  $('#vHome').hidden = !(r.tab === 'merchant' && !r.id);
+  $('#vCase').hidden = !(r.tab === 'merchant' && r.id);
+  $('#vAi').hidden = r.tab !== 'ai';
+  if (r.tab === 'ai') renderAi();
+  else if (r.id) renderCase(r.id);
+  else renderHome();
+}
+
+function renderHeader(r) {
+  const last = S.lastCase ? '/' + encodeURIComponent(S.lastCase) : '';
+  // From the dashboard, "Merchant app" opens the same merchant; on the merchant side it goes back to the list.
+  $('#tabMerchant').href = r.tab === 'merchant' ? '#merchant' : '#merchant' + last;
+  $('#tabAi').href = '#ai' + last;
+  $('#tabMerchant').setAttribute('aria-current', r.tab === 'merchant' ? 'page' : 'false');
+  $('#tabAi').setAttribute('aria-current', r.tab === 'ai' ? 'page' : 'false');
+  $('#offline').hidden = S.online;
+  const busy = S.inFlight > 0;
+  $('#dayBtn').disabled = busy;
+  $('#dayBtn').classList.toggle('is-busy', S.busyKey === 'day');
+  $('#dayBtn').textContent = S.busyKey === 'day' ? 'Passing a day…' : '⏩ Let a day pass';
+  $('#resetBtn').disabled = busy;
+  $('#resetBtn').textContent = S.busyKey === 'reset' ? 'Resetting…' : 'Reset demo';
+  const st = S.state;
+  if (!st) return;
+  const ai = st.ai || {};
+  const models = ai.models || [];
+  const down = models.length > 0 && models.every((m) => (ai.unavailable || []).includes(m));
+  const pill = $('#aiPill');
+  pill.className = 'pill ai-pill tone-' + (down ? 'bad' : 'ok');
+  pill.title = down ? 'No model is available right now (quota or outage). Runs pause and retry automatically.'
+    : 'Models, in the order they are tried: ' + models.join(', ');
+  pill.innerHTML = `<span class="dot" aria-hidden="true"></span>${esc(ai.label || 'AI')}${down ? ' — no model available' : ''}`;
+  $('#clockValue').textContent = st.today_label || '';
+}
+
+// One click handler for every button drawn by the render functions (they carry data-act).
+const ACTIONS = {
+  start: (id) => chatAction(id, 'start', 'start', 'Case started'),
+  chip: (id, el) => sendReply(el.dataset.text, false),
+  accept: (id, el) => chatAction(id, `plans/${el.dataset.plan}/accept`, 'accept:' + el.dataset.plan, 'Plan accepted', false),
+  decline: (id, el) => chatAction(id, `plans/${el.dataset.plan}/decline`, 'decline:' + el.dataset.plan, 'Plan declined'),
+  approve: (id) => decide(id, 'approve_plan', 'approve', 'Plan approved'),
+  reject: (id) => decide(id, 'reject_plan', 'reject', 'Plan rejected'),
+  handback: (id) => decide(id, 'hand_back', 'handback', 'Handed back to the AI'),
+  retry: (id) => caseAction(id, 'retry', 'retry', 'Retried now'),
+  replay: (id) => caseAction(id, 'replay', 'replay', 'Replayed the last event'),
+  confirm: (id) => caseAction(id, 'confirm-pending', 'confirm', 'The bank confirmed the transfer'),
+  outage: (id, el) => setOutage(el.dataset.service, Number(el.dataset.failures)),
+};
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  const id = routeCaseId();
+  if (!el || el.disabled || S.inFlight > 0 || !ACTIONS[el.dataset.act]) return;
+  ACTIONS[el.dataset.act](id, el);
+});
+// Typed notes survive re-renders; open <details> stay open.
+document.addEventListener('input', (e) => {
+  const key = e.target.dataset && e.target.dataset.draft;
+  if (key) S.drafts[key] = e.target.value;
+});
+document.addEventListener('toggle', (e) => {
+  const key = e.target.dataset && e.target.dataset.open;
+  if (key) { if (e.target.open) S.openDetails.add(key); else S.openDetails.delete(key); }
+}, true);
+
+$('#dayBtn').addEventListener('click', async () => {
+  if (S.inFlight > 0) return;
+  const data = await post('/api/clock', { hours: 24 }, 'day');
+  if (!data) return;
+  const outcomes = data.outcomes || [];
+  toast({
+    tone: outcomes.some(isBad) ? 'error' : 'good',
+    title: `A day passed. It is now ${S.state ? S.state.today_label : 'a day later'}.`,
+    lines: outcomes.length ? outcomes.map(dayLine)
+      : ['Nothing was due today.', esc(data.next ? data.next.text
+        : 'Nothing is scheduled for the next two weeks. Start a case, or reply as a merchant.')],
+  });
+});
+function dayLine(o) {
+  const sent = o.decision === 'ran_agent' && o.stop_reason === 'waiting_on_merchant';
+  if (sent && o.type === 'REMINDER_DUE') return `Reminder sent to <b>${esc(caseName(o.case_id))}</b>`;
+  if (sent && o.type === 'DUE_TODAY') return `Payment-day reminder sent to <b>${esc(caseName(o.case_id))}</b>`;
+  return outcomeLine(o);
+}
+
+$('#resetBtn').addEventListener('click', async () => {
+  if (S.inFlight > 0) return;
+  if (!confirm('Reset the demo? All six cases start over and the clock goes back to now.')) return;
+  const data = await post('/api/reset', {}, 'reset');
+  if (!data) return;
+  S.drafts = {};
+  S.pending = null;
+  toast({ tone: 'good', title: 'Demo reset', lines: ['All six cases are back at the start.'] });
+});
+
+window.addEventListener('hashchange', onRoute);
+if (!location.hash) history.replaceState(null, '', '#merchant');
+onRoute();
+})();
+</script>
+</body>
+</html>
